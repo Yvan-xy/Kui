@@ -1,0 +1,1 @@
+cmd_/home/code/solo/rubbish/Kui/src/kui.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000  --build-id  -T /usr/src/linux-headers-5.4.0-kali4-common/scripts/module-common.lds -o /home/code/solo/rubbish/Kui/src/kui.ko /home/code/solo/rubbish/Kui/src/kui.o /home/code/solo/rubbish/Kui/src/kui.mod.o;  true
