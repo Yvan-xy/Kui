@@ -3,9 +3,9 @@
 //
 
 
-#include "../include/elf_32.h"
+#include "../include/elf_64.h"
 
-bool IsELF32(const char *file) {
+bool IsELF64(const char *file) {
     int ret;
     loff_t pos;
     unsigned char ident[EI_NIDENT];
@@ -22,7 +22,7 @@ bool IsELF32(const char *file) {
         return false;
     }
     if (ident[0] == 0x7f && ident[1] == 'E' && ident[2] == 'L' && ident[3] == 'F') {
-        if (ident[4] == 1)
+        if (ident[4] == 2)
             return true;
         else
             return false;
@@ -32,71 +32,71 @@ bool IsELF32(const char *file) {
 }
 
 
-void SetElf32Path(Elf32 *elf32, const char *path) {
+void SetElf64Path(Elf64 *elf64, const char *path) {
     int len = strlen(path);
-    elf32->path = (char *) kmalloc(len, GFP_KERNEL);
-    strcpy(elf32->path, path);
+    elf64->path = (char *) kmalloc(len, GFP_KERNEL);
+    strcpy(elf64->path, path);
 }
 
-bool GetEhdr32(Elf32 *elf32) {
-    if (elf32->path == NULL) {
+bool GetEhdr64(Elf64 *elf64) {
+    if (elf64->path == NULL) {
         pr_err("ELF file not set");
         return false;
     }
-    struct file *fd = file_open(elf32->path, O_RDONLY, 0);
+    struct file *fd = file_open(elf64->path, O_RDONLY, 0);
     if (!fd) {
-        pr_err("Can not open file %s", elf32->path);
+        pr_err("Can not open file %s", elf64->path);
         return false;
     }
     loff_t pos = fd->f_pos;
-    int ret = kernel_read(fd, &elf32->ehdr, sizeof(Elf32_Ehdr), &pos);
+    int ret = kernel_read(fd, &elf64->ehdr, sizeof(Elf64_Ehdr), &pos);
     file_close(fd);
-    if (ret != sizeof(Elf32_Ehdr)) {
+    if (ret != sizeof(Elf64_Ehdr)) {
         pr_err("Read ELF Header failed");
         return false;
     }
     return true;
 }
 
-bool Getshstrtabhdr32(Elf32 *elf32) {
+bool Getshstrtabhdr64(Elf64 *elf64) {
     int offset = 0;
-    if (elf32->path == NULL) {
+    if (elf64->path == NULL) {
         pr_err("ELF file not set");
         return false;
     }
-    struct file *fd = file_open(elf32->path, O_RDONLY, 0);
+    struct file *fd = file_open(elf64->path, O_RDONLY, 0);
     if (!fd) {
-        pr_err("Can not open file %s", elf32->path);
+        pr_err("Can not open file %s", elf64->path);
         return false;
     }
-    offset = elf32->ehdr.e_shoff + elf32->ehdr.e_shentsize * elf32->ehdr.e_shstrndx;
+    offset = elf64->ehdr.e_shoff + elf64->ehdr.e_shentsize * elf64->ehdr.e_shstrndx;
     vfs_llseek(fd, offset, SEEK_SET);
     loff_t pos = fd->f_pos;
-    int ret = kernel_read(fd, &elf32->shstrtabhdr, sizeof(Elf32_Shdr), &pos);
+    int ret = kernel_read(fd, &elf64->shstrtabhdr, sizeof(Elf64_Shdr), &pos);
     file_close(fd);
-    if (ret != sizeof(Elf32_Shdr)) {
+    if (ret != sizeof(Elf64_Shdr)) {
         pr_err("Read Section Header Table failed");
         return false;
     }
     return true;
 }
 
-bool Getshstrtab32(Elf32 *elf32) {
-    if (elf32->path == NULL) {
+bool Getshstrtab64(Elf64 *elf64) {
+    if (elf64->path == NULL) {
         pr_err("ELF file not set");
         return false;
     }
-    struct file *fd = file_open(elf32->path, O_RDONLY, 0);
+    struct file *fd = file_open(elf64->path, O_RDONLY, 0);
     if (!fd) {
-        pr_err("Can not open file %s", elf32->path);
+        pr_err("Can not open file %s", elf64->path);
         return false;
     }
-    elf32->shstrtab = (char *) kmalloc(elf32->shstrtabhdr.sh_size, GFP_KERNEL);
-    vfs_llseek(fd, elf32->shstrtabhdr.sh_offset, SEEK_SET);
+    elf64->shstrtab = (char *) kmalloc(elf64->shstrtabhdr.sh_size, GFP_KERNEL);
+    vfs_llseek(fd, elf64->shstrtabhdr.sh_offset, SEEK_SET);
     loff_t pos = fd->f_pos;
-    int ret = kernel_read(fd, elf32->shstrtab, elf32->shstrtabhdr.sh_size, &pos);
+    int ret = kernel_read(fd, elf64->shstrtab, elf64->shstrtabhdr.sh_size, &pos);
     file_close(fd);
-    if (ret != elf32->shstrtabhdr.sh_size) {
+    if (ret != elf64->shstrtabhdr.sh_size) {
         pr_err("Read shstrtab Section failed");
         return false;
     }
@@ -104,32 +104,32 @@ bool Getshstrtab32(Elf32 *elf32) {
 }
 
 // Get orign file size
-int GetFileSize32(Elf32 *elf32) {
+int GetFileSize64(Elf64 *elf64) {
     mm_segment_t fs;
     struct kstat stat;
-    if (!elf32->path) {
+    if (!elf64->path) {
         pr_err("ELF file not set");
         return -1;
     }
 
     fs = get_fs();
     set_fs(KERNEL_DS);
-    vfs_stat(elf32->path, &stat);
+    vfs_stat(elf64->path, &stat);
     set_fs(fs);
     pr_info("stat size %lld", stat.size);
-    elf32->size = stat.size;
-    return elf32->size;
+    elf64->size = stat.size;
+    return elf64->size;
 }
 
-bool HashText32(Elf32 *elf32) {
-    Elf32_Shdr tmp;
+bool HashText64(Elf64 *elf64) {
+    Elf64_Shdr tmp;
     int textOffset;
     char name[20];
-    Elf32_Off sectionHeaderTable = elf32->ehdr.e_shoff;
+    Elf64_Off sectionHeaderTable = elf64->ehdr.e_shoff;
 
-    struct file *fd = file_open(elf32->path, O_RDONLY, 0);
+    struct file *fd = file_open(elf64->path, O_RDONLY, 0);
     if (!fd) {
-        pr_err("Open file %s failed", elf32->path);
+        pr_err("Open file %s failed", elf64->path);
         return false;
     }
 
@@ -137,12 +137,12 @@ bool HashText32(Elf32 *elf32) {
     vfs_llseek(fd, sectionHeaderTable, SEEK_SET);
     loff_t pos = fd->f_pos;
     do {
-        int ret = kernel_read(fd, &tmp, sizeof(Elf32_Shdr), &pos);
-        if (ret != sizeof(Elf32_Shdr)) {
+        int ret = kernel_read(fd, &tmp, sizeof(Elf64_Shdr), &pos);
+        if (ret != sizeof(Elf64_Shdr)) {
             pr_err("Read section header failed");
             return false;
         }
-        strcpy(name, elf32->shstrtab + tmp.sh_name);
+        strcpy(name, elf64->shstrtab + tmp.sh_name);
        pr_info("Section name is %s", name);
     } while (strcmp(name, ".text"));
     if (strcmp(name, ".text")) {
@@ -161,18 +161,18 @@ bool HashText32(Elf32 *elf32) {
         return false;
     }
 
-    SHA1(elf32->digest, text, tmp.sh_size);
+    SHA1(elf64->digest, text, tmp.sh_size);
 
     kfree(text);
     return true;
 }
 
-void Destract32(Elf32 *elf32) {
-    if (elf32->path != NULL) {
-        kfree(elf32->path);
+void Destract64(Elf64 *elf64) {
+    if (elf64->path != NULL) {
+        kfree(elf64->path);
     }
-    if (elf32->shstrtab != NULL) {
-        kfree(elf32->shstrtab);
+    if (elf64->shstrtab != NULL) {
+        kfree(elf64->shstrtab);
     }
 }
 

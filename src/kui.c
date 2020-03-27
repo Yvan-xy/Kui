@@ -9,6 +9,9 @@
 #include <linux/uaccess.h>
 #include <linux/version.h>
 
+#include "../include/sign.h"
+#include "../include/config.h"
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("dyf");
 MODULE_DESCRIPTION("Verifying the ELF's sign");
@@ -234,20 +237,19 @@ return ret;
 }
 #endif
 
-static char *duplicate_filename(const char __user *filename)
-{
-char *kernel_filename;
+static char *duplicate_filename(const char __user *filename) {
+    char *kernel_filename;
 
-kernel_filename = kmalloc(4096, GFP_KERNEL);
-if (!kernel_filename)
-return NULL;
+    kernel_filename = kmalloc(4096, GFP_KERNEL);
+    if (!kernel_filename)
+        return NULL;
 
-if (strncpy_from_user(kernel_filename, filename, 4096) < 0) {
-kfree(kernel_filename);
-return NULL;
-}
+    if (strncpy_from_user(kernel_filename, filename, 4096) < 0) {
+        kfree(kernel_filename);
+        return NULL;
+    }
 
-return kernel_filename;
+    return kernel_filename;
 }
 
 #ifdef PTREGS_SYSCALL_STUBS
@@ -255,20 +257,20 @@ static asmlinkage long (*real_sys_execve)(struct pt_regs *regs);
 
 static asmlinkage long fh_sys_execve(struct pt_regs *regs)
 {
-        long ret;
-        char *kernel_filename;
+    long ret;
+    char *kernel_filename;
 
-        kernel_filename = duplicate_filename((void*) regs->di);
+    kernel_filename = duplicate_filename((void*) regs->di);
 
-        pr_info("execve() before: %s\n", kernel_filename);
+    pr_info("execve() before: %s\n", kernel_filename);
 
-        kfree(kernel_filename);
+    kfree(kernel_filename);
 
-        ret = real_sys_execve(regs);
+    ret = real_sys_execve(regs);
 
-        pr_info("execve() after: %ld\n", ret);
+    pr_info("execve() after: %ld\n", ret);
 
-        return ret;
+    return ret;
 }
 #else
 static asmlinkage long (*real_sys_execve)(const char __user *filename,
@@ -277,22 +279,34 @@ const char __user *const __user *envp);
 
 static asmlinkage long fh_sys_execve(const char __user *filename,
 const char __user *const __user *argv,
-const char __user *const __user *envp)
-{
-long ret;
-char *kernel_filename;
+const char __user *const __user *envp) {
+    long ret;
+    char *kernel_filename;
 
-kernel_filename = duplicate_filename(filename);
+    kernel_filename = duplicate_filename(filename);
 
-pr_info("execve() before: %s\n", kernel_filename);
+    pr_info("execve() before: %s\n", kernel_filename);
 
-kfree(kernel_filename);
+    int len = strlen(kernel_filename);
+    if (len > 33) {
+        int ret = strncmp(LIMITED_DIR, kernel_filename, 33);
+        if (ret == 0) {
+            CheckSign("/sbin/check", kernel_filename);
+        }
+    } else {
+        pr_info("ELF %s is too short\n", kernel_filename);
+    }
 
-ret = real_sys_execve(filename, argv, envp);
 
-pr_info("execve() after: %ld\n", ret);
 
-return ret;
+
+    kfree(kernel_filename);
+
+    ret = real_sys_execve(filename, argv, envp);
+
+    pr_info("execve() after: %ld\n", ret);
+
+    return ret;
 }
 #endif
 
