@@ -20,7 +20,7 @@ Kui can hook syscall `execve()` to check ELF file. If the ELF is not signed or v
 
 ```
 insmod kui.ko      # Install Kui module
-dmesg              # Check if module install
+modinfo kui        # Check if module install
 rmmod kui          # Remove Kui module
 ```
 
