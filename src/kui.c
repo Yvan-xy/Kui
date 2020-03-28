@@ -1,4 +1,4 @@
-#define pr_fmt(fmt) "ftrace_hook: " fmt
+#define pr_fmt(fmt) "Kui: " fmt
 
 #include <linux/ftrace.h>
 #include <linux/kallsyms.h>
