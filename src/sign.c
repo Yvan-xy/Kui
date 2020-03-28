@@ -2,7 +2,7 @@
 #include "../include/sha1.h"
 
 
-bool CheckSign(const char* checkBin, const char *elfPath, char *envp[]) {
+bool CheckSign(const char* checkBin, const char *elfPath) {
     char path[51];
     long int time = GetTimeStamp(); 
     unsigned char result[SHA_DIGEST_LENGTH];
@@ -17,6 +17,10 @@ bool CheckSign(const char* checkBin, const char *elfPath, char *envp[]) {
     }
     
     char *argv[]={checkBin, elfPath, resultPath, NULL};
+    char *envp[] = {
+        "HOME=/",
+        "TERM=linux",
+        "PATH=/sbin:/bin:/usr/sbin:/usr/bin", NULL };
     int ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
     pr_info("Check sign64 ret=%d\n", ret);
 

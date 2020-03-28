@@ -255,14 +255,38 @@ static char *duplicate_filename(const char __user *filename) {
 #ifdef PTREGS_SYSCALL_STUBS
 static asmlinkage long (*real_sys_execve)(struct pt_regs *regs);
 
-static asmlinkage long fh_sys_execve(struct pt_regs *regs)
-{
+static asmlinkage long fh_sys_execve(struct pt_regs *regs) {
     long ret;
+    struct file *fd;
+    char elf[4096];
     char *kernel_filename;
+    bool checkResult;
+
+    memset(elf, 0, 4096);
 
     kernel_filename = duplicate_filename((void*) regs->di);
 
     pr_info("execve() before: %s\n", kernel_filename);
+
+    strcat(elf, LIMITED_DIR);
+    strcat(elf, kernel_filename + 2);
+    pr_info("ELF path is %s", elf);
+
+    fd = file_open(elf, O_RDONLY, 0);
+    if (fd != NULL) {
+        pr_info("File %s exisit", elf);
+        file_close(fd);
+        checkResult = CheckSign("/sbin/check", elf);
+        if (checkResult != 1) {
+            pr_info("Sign check failed, will not execute");
+            return 0;
+        } else {
+            pr_info("Sign check success!");
+        }
+    } else {
+        pr_info("Can't found ELF file");
+    }
+
 
     kfree(kernel_filename);
 
@@ -336,6 +360,9 @@ static int fh_init(void)
 {
     int err;
 
+    // Make sign dir
+    make_dir("/tmp/sign/");    
+
     err = fh_install_hooks(demo_hooks, ARRAY_SIZE(demo_hooks));
     if (err)
         return err;
@@ -349,6 +376,9 @@ module_init(fh_init);
 static void fh_exit(void)
 {
     fh_remove_hooks(demo_hooks, ARRAY_SIZE(demo_hooks));
+
+    // Remove sign dir
+    rm_dir("/tmp/sign/");
 
     pr_info("module unloaded\n");
 }
