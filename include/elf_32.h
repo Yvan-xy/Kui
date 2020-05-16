@@ -44,6 +44,8 @@ int GetFileSize32(Elf32 *elf32);
 
 bool HashText32(Elf32 *elf32);
 
+unsigned char *GetLoadSegment32(Elf32 *elf32, Elf32_Phdr *phdr);
+
 void Destract32(Elf32 *elf32);
 
 #endif //KUI_ELF_32_H

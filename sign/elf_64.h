@@ -36,6 +36,8 @@ int GetFileSize64(Elf64 *elf64);
 
 bool HashText64(Elf64 *elf64);
 
+unsigned char *GetLoadSegment64(Elf64 *elf64, Elf64_Phdr *phdr);
+
 void Destract64(Elf64 *elf64);
 
 #endif //ELFSIGN_ELF_64_H

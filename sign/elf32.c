@@ -113,11 +113,10 @@ int GetFileSize32(Elf32 *elf32) {
 
 
 bool HashText32(Elf32 *elf32) {
-    Elf32_Off sectionHeaderTable = elf32->ehdr.e_shoff;
-    Elf32_Shdr tmp;
-    int textOffset;
+    Elf32_Off programHeaderTable = elf32->ehdr.e_phoff;
+    Elf32_Phdr tmp;
     char name[20];
-    unsigned char buf[1];
+    unsigned char *content = NULL;
 
     SHA_CTX ctx;
     SHA1_Init(&ctx);
@@ -127,34 +126,74 @@ bool HashText32(Elf32 *elf32) {
         err_msg("Can not open file %s", elf32->path);
         return false;
     }
-    fseek(fd, sectionHeaderTable, SEEK_SET);
-    do {
-        int ret = fread(&tmp, 1, sizeof(Elf32_Shdr), fd);
-        if (ret != sizeof(Elf32_Shdr)) {
-            err_msg("Read section header failed");
-            return false;
-        }
-        strcpy(name, elf32->shstrtab + tmp.sh_name);
-//        log_msg("Section name is %s", name);
-    } while (strcmp(name, ".text"));
-    if (strcmp(name, ".text")) {
-        err_msg("Not found .text section");
-        return false;
-    }
-    textOffset = tmp.sh_offset;
-    fseek(fd, textOffset, SEEK_SET);
+    fseek(fd, programHeaderTable, SEEK_SET);
+    for (int count = 0; count < elf32->ehdr.e_phnum; ++count) {
 
-    for (int i = 0; i < tmp.sh_size; i++) {
-        int ret = fread(buf, 1, 1, fd);
-        if (ret != 1) {
-            err_msg("Read .text section failed");
+        size_t ret = fread(&tmp, 1, sizeof(Elf32_Phdr), fd);
+        if (ret != sizeof(Elf32_Phdr)) {
+            err_msg("Read Program Header failed");
             return false;
         }
-        SHA1_Update(&ctx, buf, 1);
+
+#if(LOG_MODE == 1)
+        log_msg("p_type is %d", tmp.p_type);
+        log_msg("p_offset is %p", tmp.p_offset);
+        log_msg("p_vaddr is %p", tmp.p_vaddr);
+        log_msg("p_filez is %p", tmp.p_filesz);
+        log_msg("----------->");
+#endif
+
+        /* Judge if Load Segment */
+        if (tmp.p_type != PT_LOAD || tmp.p_offset == 0)
+            continue;
+
+        content = GetLoadSegment32(elf32, &tmp);
+
+#if(LOG_MODE == 1)
+        printf("\n----------> Load Segment Content\n");
+        for (int i = 0; i < tmp.p_filesz; i++) {
+            printf("%p ", content[i]);
+        }
+#endif
+
+        SHA1_Update(&ctx, content, tmp.p_filesz);
+
+        if (content != NULL)
+            free(content);
+
+        content = NULL;
     }
+
     fclose(fd);
     SHA1_Final(elf32->digest, &ctx);
     return true;
+}
+
+unsigned char *GetLoadSegment32(Elf32 *elf32, Elf32_Phdr *phdr) {
+    if (phdr == NULL) {
+        err_msg("phdr not exist");
+        return false;
+    }
+    Elf32_Off p_offset = phdr->p_offset;
+    Elf32_Word p_filesz = phdr->p_filesz;
+
+    FILE *fd = fopen(elf32->path, "rb");
+    if (!fd) {
+        err_msg("Can not open file %s", elf32->path);
+        return NULL;
+    }
+
+    char *content = malloc(p_filesz);
+
+    fseek(fd, p_offset, SEEK_SET);
+
+    int ret = fread(content, 1, p_filesz, fd);
+    fclose(fd);
+    if (ret != p_filesz) {
+        err_msg("Read Program Header -> content failed");
+        return NULL;
+    }
+    return content;
 }
 
 void Destract32(Elf32 *elf32) {
