@@ -8,7 +8,7 @@ PWD    := $(shell pwd)
 ccflags-y := -std=gnu11 -Wno-declaration-after-statement
 
 all: inSub
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	$(MAKE) -C $(KDIR) M=$(PWD) modules 
 
 sub:
 	cd sign && make 

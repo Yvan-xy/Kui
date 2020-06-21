@@ -305,23 +305,34 @@ static asmlinkage long fh_sys_execve(const char __user *filename,
 const char __user *const __user *argv,
 const char __user *const __user *envp) {
     long ret;
+    struct file *fd;
+    char elf[4096];
     char *kernel_filename;
-
+    bool checkResult;
     kernel_filename = duplicate_filename(filename);
+
+    memset(elf, 0, 4096);
 
     pr_info("execve() before: %s\n", kernel_filename);
 
-    int len = strlen(kernel_filename);
-    if (len > 33) {
-        int ret = strncmp(LIMITED_DIR, kernel_filename, 33);
-        if (ret == 0) {
-            CheckSign("/sbin/check", kernel_filename);
+    strcat(elf, LIMITED_DIR);
+    strcat(elf, kernel_filename + 2);
+    pr_info("ELF path is %s", elf);
+
+    fd = file_open(elf, O_RDONLY, 0);
+    if (fd != NULL) {
+        pr_info("File %s exisit", elf);
+        file_close(fd);
+        checkResult = CheckSign("/sbin/check", elf);
+        if (checkResult != 1) {
+            pr_info("Sign check failed, will not execute");
+            return 0;
+        } else {
+            pr_info("Sign check success!");
         }
     } else {
-        pr_info("ELF %s is too short\n", kernel_filename);
+        pr_info("Can't found ELF file");
     }
-
-
 
 
     kfree(kernel_filename);
