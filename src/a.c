@@ -18,11 +18,7 @@ MODULE_AUTHOR("dyf");
 MODULE_DESCRIPTION("Verifying the ELF's sign");
 MODULE_VERSION("0.1");
 
-/*
- * There are two ways of preventing vicious recursive loops when hooking:
- * - detect recusion using function return address (USE_FENTRY_OFFSET = 0)
- * - avoid recusion by jumping over the ftrace call (USE_FENTRY_OFFSET = 1)
- */
+
 #define USE_FENTRY_OFFSET 0
 
 /**
@@ -201,47 +197,64 @@ void fh_remove_hooks(struct ftrace_hook *hooks, size_t count)
 #pragma GCC optimize("-fno-optimize-sibling-calls")
 #endif
 
-
-static char *duplicate_filename(const char __user *filename) {
-    char *kernel_filename;
-
-    kernel_filename = kmalloc(4096, GFP_KERNEL);
-    if (!kernel_filename)
-        return NULL;
-
-    if (strncpy_from_user(kernel_filename, filename, 4096) < 0) {
-        kfree(kernel_filename);
-        return NULL;
+static char* checkBinary(const char* filename) {
+    const char * pos;
+    const char *dir[] = {"/usr/sbin", "/usr/bin", 
+                "/usr/local/bin", "/bin",
+                "/sbin", "/usr", "/lib", "ELFSign"};
+    for (int i=0; i < ARRAY_SIZE(dir); i++) {
+        pos = strstr(filename, dir[i]);
+        if (pos != NULL) return true;
     }
-
-    return kernel_filename;
+    return false;
 }
 
-#ifdef PTREGS_SYSCALL_STUBS
-static asmlinkage long (*real_sys_execve)(struct pt_regs *regs);
+static char* get_absolute_path(const struct path * f_path) {
+    char *absolutePath;
+    char *retAddr = NULL;
+    absolutePath = kmalloc(512, GFP_KERNEL);
+    memset(absolutePath, 0, 512);
+    if (f_path == NULL) {
+        pr_err("f_path is NULL");
+        kfree(absolutePath);
+        return NULL;
+    }
+    retAddr = d_path(f_path, absolutePath, 512);
+    if (IS_ERR(retAddr)) {
+        pr_err("Get Path Error");
+        kfree(absolutePath);
+        return NULL;
+    }
+    return retAddr;
+}
 
-static asmlinkage long fh_sys_execve(struct pt_regs *regs) {
-    long ret;
+// static int (*real_load_elf_binary)(struct linux_binprm *bprm);
+
+static  int (*real_sys_execve)(struct linux_binprm *bprm);
+
+static int fh_load_elf_binary(struct linux_binprm *bprm) {
+    int ret = 0;
+    bool isSysBin, checkResult;
+    const char * filename = bprm->filename;
     struct file *fd;
-    char elf[4096];
-    char *kernel_filename;
-    bool checkResult;
+    pr_info("%s", filename);
 
-    memset(elf, 0, 4096);
+    isSysBin = checkBinary(filename);
+    if (isSysBin) {
+        pr_info("System ELF %s, pass", filename);
+        ret = real_sys_execve(bprm);
+        pr_info("%s(%p) = %d\n", __func__, bprm, ret);
+        return ret;
+    }
 
-    kernel_filename = duplicate_filename((void*) regs->di);
+    filename = get_absolute_path(&(bprm->file->f_path));
+    pr_info("Normal ELF: %s, checking!", filename);
 
-    pr_info("execve() before: %s\n", kernel_filename);
-
-    strcat(elf, LIMITED_DIR);
-    strcat(elf, kernel_filename + 2);
-    pr_info("ELF path is %s", elf);
-
-    fd = file_open(elf, O_RDONLY, 0);
+    fd = file_open(filename, O_RDONLY, 0);
     if (fd != NULL) {
-        pr_info("File %s exisit", elf);
+        pr_info("File %s exisit", filename);
         file_close(fd);
-        checkResult = CheckSign("/sbin/check", elf);
+        checkResult = CheckSign("/sbin/check", filename);
         if (checkResult != 1) {
             pr_info("Sign check failed, will not execute");
             return 0;
@@ -252,64 +265,11 @@ static asmlinkage long fh_sys_execve(struct pt_regs *regs) {
         pr_info("Can't found ELF file");
     }
 
+    ret = real_sys_execve(bprm);
+    pr_info("%s(%p) = %d\n", __func__, bprm, ret);
 
-    kfree(kernel_filename);
-
-    ret = real_sys_execve(regs);
-
-    pr_info("execve() after: %ld\n", ret);
-
-    return ret;
+    return 0;
 }
-#else
-static asmlinkage long (*real_sys_execve)(const char __user *filename,
-const char __user *const __user *argv,
-const char __user *const __user *envp);
-
-static asmlinkage long fh_sys_execve(const char __user *filename,
-const char __user *const __user *argv,
-const char __user *const __user *envp) {
-    long ret;
-    struct file *fd;
-    char elf[4096];
-    char *kernel_filename;
-    bool checkResult;
-    kernel_filename = duplicate_filename(filename);
-
-
-    memset(elf, 0, 4096);
-
-    pr_info("execve() before: %s\n", kernel_filename);
-
-    strcat(elf, LIMITED_DIR);
-    strcat(elf, kernel_filename + 2);
-    pr_info("ELF path is %s", elf);
-
-    fd = file_open(elf, O_RDONLY, 0);
-    if (fd != NULL) {
-        pr_info("File %s exisit", elf);
-        file_close(fd);
-        checkResult = CheckSign("/sbin/check", elf);
-        if (checkResult != 1) {
-            pr_info("Sign check failed, will not execute");
-            return 0;
-        } else {
-            pr_info("Sign check success!");
-        }
-    } else {
-        pr_info("Can't found ELF file");
-    }
-
-
-    kfree(kernel_filename);
-
-    ret = real_sys_execve(filename, argv, envp);
-
-    pr_info("execve() after: %ld\n", ret);
-
-    return ret;
-}
-#endif
 
 
 /*
@@ -331,7 +291,8 @@ const char __user *const __user *envp) {
 
 static struct ftrace_hook demo_hooks[] = {
 //        HOOK("sys_clone",  fh_sys_clone,  &real_sys_clone),
-        HOOK("sys_execve", fh_sys_execve, &real_sys_execve),
+        // HOOK("sys_execve", fh_sys_execve, &real_sys_execve),
+        HOOK("load_elf_binary", fh_load_elf_binary, &real_sys_execve),
         
 };
 
